@@ -1,0 +1,258 @@
+---
+title: "831 Final Project"
+author: "Abby Beilman"
+date: "2025-04-22"
+output: html_document
+---
+
+```{r}
+#packages
+library(tidyverse)
+library(glmmTMB)
+library(GGally)
+```
+
+```{r}
+#read in data
+bgc<-read.csv("gasfield.csv")
+hydro<-read.csv("discharge_ag.csv")
+```
+
+```{r}
+#do some formatting stuff
+
+bgc <- bgc %>%
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d"))
+
+bgc<-mutate(bgc, siteD=paste0(Date, Site))
+
+alld<-merge(bgc, hydro, by="siteD")
+
+
+alld<-select(alld, c("Date.x", "Time", "Site.x", "Temp", "pH", "Spc", "DO", "DOC", "TN","DIC", "pCO2", "pCH4", "pN2O", "DIS_m"))
+
+colnames(alld)<-c("Date","Time", "Site", "Temp", "pH", "Spc", "DO", "DOC", "TN", "DIC","pCO2", "pCH4", "pN2O", "DIS_m")
+
+alld$Site<-as.factor(alld$Site)
+
+```
+
+```{r}
+#explore the data
+
+#histograms
+#responses
+hist(alld$pCO2)
+hist(alld$pCH4)
+
+#potential predictors
+hist(alld$DIS_m)
+hist(alld$DIC)
+hist(alld$Temp)
+hist(log(alld$Temp))#don't transform
+hist(alld$pH)
+hist(log(alld$pH))#maybe
+hist(alld$DOC)
+hist(log(alld$DOC))#transform
+
+#make nice histograms for the ones you want to use in the final
+ggplot(data=alld, aes(x=alld$pCO2))+geom_histogram()+labs(title="pCO2 Histogram", x="pCO2", y="Frequency")+theme_minimal()+theme(plot.margin = margin(10, 10, 50, 10))
+
+ggplot(data=alld, aes(x=log(alld$pCO2)))+geom_histogram()+labs(title="Log pCO2 Histogram", x="Log pCO2", y="Frequency")+theme_minimal()+theme(plot.margin = margin(10, 10, 50, 10))
+
+ggplot(data=alld, aes(x=alld$pCH4))+geom_histogram()+labs(title="pCH4 Histogram", x="pCH4", y="Frequency")+theme_minimal()+theme(plot.margin = margin(10, 10, 50, 10))
+
+ggplot(data=alld, aes(x=log(alld$pCH4)))+geom_histogram()+labs(title="Log pCH4 Histogram", x="Log pCH4", y="Frequency")+theme_minimal()+theme(plot.margin = margin(10, 10, 50, 10))
+
+#xy plots of variables of interest
+#discharge
+ggplot(data=alld, aes(x=DIS_m, y=log(pCO2), color=Site))+geom_point()+theme_minimal()
+ggplot(data=alld, aes(x=DIS_m, y=log(pCH4), color=Site))+geom_point()+theme_minimal()
+#wow that's really nothing
+
+#temp
+ggplot(data=alld, aes(x=Temp, y=log(pCO2), color=Site))+geom_point()+theme_minimal()+labs(title="Temperature x CO2", y="Log pCO2", x="Temperature (Degrees C)")
+ggplot(data=alld, aes(x=Temp, y=log(pCH4), color=Site))+geom_point()+theme_minimal()+labs(title="Temperature x CH4", y="Log pCH4", x="Temperature  (Degrees C)")
+#CH4 temp is definitely something
+#and CO2 temp is not nothing
+
+#pH
+ggplot(data=alld, aes(x=pH, y=log(pCO2), color=Site))+geom_point()+theme_minimal()+labs(title="pH x CO2", y="Log pCO2", x="pH")
+ggplot(data=alld, aes(x=pH, y=log(pCH4), color=Site))+geom_point()+theme_minimal()+labs(title="pH x CH4", y="Log pCH4", x="pH")
+#pH has opposite effect of temp
+
+#DIC
+ggplot(data=alld, aes(x=DIC, y=log(pCO2), color=Site))+geom_point()+theme_minimal()
+ggplot(data=alld, aes(x=DIC, y=log(pCH4), color=Site))+geom_point()+theme_minimal()
+#eh
+
+#DOC
+ggplot(data=alld, aes(x=DOC, y=log(pCO2), color=Site))+geom_point()+theme_minimal()+labs(title="DOC x CO2", y="Log pCO2", x="DOC mg/l")
+ggplot(data=alld, aes(x=DOC, y=log(pCH4), color=Site))+geom_point()+theme_minimal()+theme_minimal()+labs(title="DOC x CH4", y="Log pCH4", x="DOC mg/l")
+#ch4 is more correlated than co2
+
+alldm <- alld[, !colnames(alld) %in% "Time"]
+ggpairs(alldm)
+#this is kind of useless with this many variables but there are definitely outliers
+#however i am going to keep them for now
+#also going to keep NAs just to keep N up overall
+#doesn't appear that anything is super correlated in terms of predictors
+
+```
+
+
+```{r}
+#co2 models
+#temp, doc, site, time, pH
+co2mod0<-glmmTMB(log(pCO2)~1, data=alld)
+co2mod1<-glmmTMB(log(pCO2)~Temp+pH+(1|Time)+(1|Site), data=alld)
+co2mod2<-glmmTMB(log(pCO2)~Temp*DOC+pH+(1|Time)+(1|Site), data=alld)
+co2mod3<-glmmTMB(log(pCO2)~Temp+DOC+pH+(1|Time)+Site, data=alld)#good
+co2mod4<-glmmTMB(log(pCO2)~Temp*DOC+pH+(1|Time)+Site, data=alld)
+co2mod5<-glmmTMB(log(pCO2)~Temp+DOC+pH+Site, data=alld)#good
+co2mod6<-glmmTMB(log(pCO2)~Temp*DOC+pH+Site, data=alld)
+co2mod7<-glmmTMB(log(pCO2)~Temp+DOC+pH, data=alld)
+co2mod8<-glmmTMB(log(pCO2)~Temp*DOC+pH, data=alld)
+co2mod9<-glmmTMB(log(pCO2)~Temp+DOC, data=alld)
+co2mod10<-glmmTMB(log(pCO2)~Temp*DOC, data=alld)
+co2mod11<-glmmTMB(log(pCO2)~Temp+pH, data=alld)
+co2mod12<-glmmTMB(log(pCO2)~Temp*pH, data=alld)
+co2mod13<-glmmTMB(log(pCO2)~pH+DOC, data=alld)
+co2mod14<-glmmTMB(log(pCO2)~Temp, data=alld)
+co2mod15<-glmmTMB(log(pCO2)~DOC, data=alld)
+co2mod16<-glmmTMB(log(pCO2)~pH, data=alld)
+co2mod17<-glmmTMB(log(pCO2)~Site, data=alld)
+
+co2AIC<-AIC(co2mod0, co2mod1, co2mod2, co2mod3, co2mod4, co2mod5, co2mod6, co2mod7, co2mod8, co2mod9, co2mod10, co2mod11, co2mod12, co2mod13, co2mod14, co2mod15, co2mod16, co2mod17)
+
+summary(co2mod3)
+#decent
+summary(co2mod4)
+#nah
+summary(co2mod5)
+#decent
+summary(co2mod6)
+#nah
+
+#basically do we want time as a random effect
+#nah (go with 5)
+
+```
+
+```{r}
+#ch4 models
+#temp, doc, site, time, pH
+ch4mod0<-glmmTMB(log(pCH4)~1, data=alld)
+ch4mod1<-glmmTMB(log(pCH4)~Temp+pH+(1|Time)+(1|Site), data=alld)
+ch4mod2<-glmmTMB(log(pCH4)~Temp*DOC+pH+(1|Time)+(1|Site), data=alld)
+ch4mod3<-glmmTMB(log(pCH4)~Temp+DOC+pH+(1|Time)+Site, data=alld)
+ch4mod4<-glmmTMB(log(pCH4)~Temp*DOC+pH+(1|Time)+Site, data=alld)#best
+ch4mod5<-glmmTMB(log(pCH4)~Temp+DOC+pH+Site, data=alld)
+ch4mod6<-glmmTMB(log(pCH4)~Temp*DOC+pH+Site, data=alld)#best
+ch4mod7<-glmmTMB(log(pCH4)~Temp+DOC+pH, data=alld)
+ch4mod8<-glmmTMB(log(pCH4)~Temp*DOC+pH, data=alld)
+ch4mod9<-glmmTMB(log(pCH4)~Temp+DOC, data=alld)
+ch4mod10<-glmmTMB(log(pCH4)~Temp*DOC, data=alld)
+ch4mod11<-glmmTMB(log(pCH4)~Temp+pH, data=alld)
+ch4mod12<-glmmTMB(log(pCH4)~Temp*pH, data=alld)
+ch4mod13<-glmmTMB(log(pCH4)~pH+DOC, data=alld)
+ch4mod14<-glmmTMB(log(pCH4)~Temp, data=alld)
+ch4mod15<-glmmTMB(log(pCH4)~DOC, data=alld)
+ch4mod16<-glmmTMB(log(pCH4)~pH, data=alld)
+ch4mod17<-glmmTMB(log(pCH4)~Site, data=alld)
+
+ch4AIC<-AIC(ch4mod0, ch4mod1, ch4mod2, ch4mod3, ch4mod4, ch4mod5, ch4mod6, ch4mod7, ch4mod8, ch4mod9, ch4mod10, ch4mod11, ch4mod12, ch4mod13, ch4mod14, ch4mod15, ch4mod16, ch4mod17)
+
+summary(ch4mod2)
+summary(ch4mod3)
+summary(ch4mod4)
+summary(ch4mod6)
+summary(ch4mod10)
+#temp and DOC do interact
+#ph is never significant
+```
+
+```{r}
+#redo ch4 no ph
+#ch4 models
+#temp, doc, site, time, pH
+nch4mod1<-glmmTMB(log(pCH4)~Temp+(1|Time)+(1|Site), data=alld)
+nch4mod2<-glmmTMB(log(pCH4)~Temp*DOC+(1|Time)+(1|Site), data=alld)
+nch4mod3<-glmmTMB(log(pCH4)~Temp+DOC+(1|Time)+Site, data=alld)
+nch4mod4<-glmmTMB(log(pCH4)~Temp*DOC+(1|Time)+Site, data=alld)#best
+nch4mod5<-glmmTMB(log(pCH4)~Temp+DOC+Site, data=alld)
+nch4mod6<-glmmTMB(log(pCH4)~Temp*DOC+Site, data=alld)#best
+nch4mod7<-glmmTMB(log(pCH4)~Temp+DOC, data=alld)
+nch4mod8<-glmmTMB(log(pCH4)~Temp*DOC, data=alld)
+nch4mod14<-glmmTMB(log(pCH4)~Temp, data=alld)
+nch4mod15<-glmmTMB(log(pCH4)~DOC, data=alld)
+nch4mod17<-glmmTMB(log(pCH4)~Site, data=alld)
+
+ch4AIC2<-AIC(ch4mod0, ch4mod1, ch4mod2, ch4mod3, ch4mod4, ch4mod5, ch4mod6, ch4mod7, ch4mod8, ch4mod9, ch4mod10, ch4mod11, ch4mod12, ch4mod13, ch4mod14, ch4mod15, ch4mod16, ch4mod17,  nch4mod1, nch4mod2, nch4mod3, nch4mod4, nch4mod5, nch4mod6, nch4mod7, nch4mod8,nch4mod14, nch4mod15, nch4mod17)
+
+#4 and 6 with and without ph are best
+#go with 6 (simpler)
+
+summary(ch4mod6)
+summary(nch4mod6)
+
+#lets do the no pH one
+
+```
+
+```{r}
+#transforming the variables version for best models
+co2mod5<-glmmTMB(log(pCO2)~Temp+DOC+pH+Site, data=alld)
+ttco2mod5<-glmmTMB(log(pCO2)~Temp+log(DOC)+log(pH)+Site, data=alld)
+tco2mod5<-glmmTMB(log(pCO2)~Temp+log(DOC)+pH+Site, data=alld)
+transAIC2<-AIC(co2mod5, ttco2mod5, tco2mod5)
+#non transformed is better
+
+nch4mod6<-glmmTMB(log(pCH4)~Temp*DOC+Site, data=alld)
+tnch4mod6<-glmmTMB(log(pCH4)~Temp*log(DOC)+Site, data=alld)
+transAIC4<-AIC(nch4mod6, tnch4mod6)
+#non transformed is better
+```
+
+```{r}
+#check graphical fit
+
+ch4modresiduals<-residuals(nch4mod6)
+co2modresiduals<-residuals(co2mod5)
+ch4modfit<-fitted(nch4mod6)
+co2modfit<-fitted(co2mod5)
+
+plot(ch4modresiduals)
+plot(co2modresiduals)
+plot(ch4modresiduals,ch4modfit)
+plot(co2modresiduals,co2modfit)
+
+
+alld$predicted4 <- predict(nch4mod6, newdata = alld, type = "response")
+
+r_squared4 <- summary(lm(predicted4 ~ log(pCH4), data = alld))$r.squared
+
+ggplot(data = alld, aes(x = log(pCH4), y = predicted4, color = Site)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(title = "Modeled vs Predicted CH4", x = "log pCH4", y = "model log pCH4")
+
+alld$predicted2 <- predict(co2mod5, newdata = alld, type = "response")
+
+r_squared2 <- summary(lm(predicted2 ~ log(pCO2), data = alld))$r.squared
+
+ggplot(data = alld, aes(x = log(pCO2), y = predicted2, color = Site)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(title = "Modeled vs Predicted CO2", x = "log pCO2", y = "model log pCO2")
+
+
+summary(nch4mod6)
+summary(co2mod5)
+
+nch4mod6<-glmmTMB(log(pCH4)~Temp*DOC+Site, data=alld)
+co2mod5<-glmmTMB(log(pCO2)~Temp+DOC+pH+Site, data=alld)
+
+```
